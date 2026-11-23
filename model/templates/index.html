@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulasi Alur Prediksi CART - Asuransi Kesehatan</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    
+    /* Custom clean scrollbar for tree visualization */
+    .tree-scroll::-webkit-scrollbar {
+      height: 8px;
+    }
+    .tree-scroll::-webkit-scrollbar-track {
+      background: #f8fafc;
+      border-radius: 4px;
+    }
+    .tree-scroll::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .tree-scroll::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    .tree-node {
+      transition: all 0.25s ease;
+    }
+    .tree-node:hover .node-rect {
+      stroke-width: 2.5px;
+    }
+    .tree-edge {
+      transition: stroke 0.3s ease, stroke-width 0.3s ease, opacity 0.3s ease;
+    }
+    .edge-lbl {
+      transition: fill 0.3s ease, opacity 0.3s ease;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+
+  <div class="max-w-6xl mx-auto w-full space-y-7">
+    
+    <!-- HEADER -->
+    <header class="bg-white border border-slate-200 rounded-xl p-6 sm:p-7 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              CART Regressor Aktif (R&sup2; 89.7%)
+            </span>
+            <span class="text-xs text-slate-400">|</span>
+            <span class="text-xs text-slate-500 font-medium">Dataset: 1.337 data asuransi</span>
+          </div>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">Kalkulator &amp; Visualisasi Alur Pohon Keputusan CART</h1>
+          <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl leading-relaxed">
+            Eksplorasi interaktif model <em>Classification and Regression Trees</em>. Setiap perubahan nilai input akan langsung dialirkan melalui garis percabangan pohon (berwarna hijau) hingga mencapai simpul daun biaya medis.
+          </p>
+        </div>
+        <div class="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
+          <a href="#treeSection" class="text-xs font-semibold px-3 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg transition inline-flex items-center gap-1.5 shadow-sm">
+            <span>Lihat Alur Pohon</span> &darr;
+          </a>
+          <span class="text-[11px] text-slate-400">Real-time Decision Flow</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN TWO-COLUMN SECTION: INPUTS & PREDICTION -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+
+      <!-- LEFT: INPUT FORM (7 COLS) -->
+      <section class="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 sm:p-7 shadow-sm space-y-6">
+        <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-900">1. Parameter Data Pasien</h2>
+          <span class="text-xs text-slate-400">Otomatis Terkalkulasi</span>
+        </div>
+
+        <form id="calcForm" class="space-y-5" onsubmit="event.preventDefault(); runCalc();">
+          
+          <!-- STATUS PEROKOK (PRIMARY FEATURE) -->
+          <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="block text-xs font-bold text-slate-800">
+                Status Merokok <span class="text-emerald-700 font-normal">(Faktor Utama - Simpul Akar)</span>
+              </label>
+              <span class="text-[11px] text-slate-500 font-medium" id="smokerNotice">Cabang Primer</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <label class="cursor-pointer">
+                <input type="radio" name="smoker" value="0" checked class="peer sr-only" onchange="runCalc()">
+                <div class="py-2.5 px-3 text-center text-xs font-semibold border border-slate-200 rounded-lg peer-checked:border-slate-900 peer-checked:bg-slate-900 peer-checked:text-white bg-white text-slate-700 shadow-sm transition">
+                  Tidak Merokok
+                </div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="smoker" value="1" class="peer sr-only" onchange="runCalc()">
+                <div class="py-2.5 px-3 text-center text-xs font-semibold border border-slate-200 rounded-lg peer-checked:border-rose-600 peer-checked:bg-rose-600 peer-checked:text-white bg-white text-slate-700 shadow-sm transition">
+                  Perokok Aktif
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- USIA & JENIS KELAMIN -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="flex justify-between items-center mb-1.5">
+                <label for="ageInput" class="text-xs font-semibold text-slate-700">Usia Pasien</label>
+                <span class="text-xs text-slate-400 font-medium" id="ageDisplay">30 tahun</span>
+              </div>
+              <input type="number" id="ageInput" min="18" max="64" value="30" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900" oninput="document.getElementById('ageDisplay').textContent = this.value + ' tahun'; runCalc();">
+              <div class="flex gap-1.5 mt-2">
+                <button type="button" onclick="setAge(21)" class="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">21 th</button>
+                <button type="button" onclick="setAge(30)" class="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">30 th</button>
+                <button type="button" onclick="setAge(42)" class="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">42 th</button>
+                <button type="button" onclick="setAge(55)" class="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">55 th</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Jenis Kelamin</label>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="cursor-pointer">
+                  <input type="radio" name="sex" value="1" checked class="peer sr-only" onchange="runCalc()">
+                  <div class="py-2 text-center text-xs font-medium border border-slate-200 rounded-lg peer-checked:border-slate-900 peer-checked:bg-slate-900 peer-checked:text-white text-slate-700 transition">
+                    Laki-laki
+                  </div>
+                </label>
+                <label class="cursor-pointer">
+                  <input type="radio" name="sex" value="0" class="peer sr-only" onchange="runCalc()">
+                  <div class="py-2 text-center text-xs font-medium border border-slate-200 rounded-lg peer-checked:border-slate-900 peer-checked:bg-slate-900 peer-checked:text-white text-slate-700 transition">
+                    Perempuan
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- BMI & JUMLAH ANAK -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="flex justify-between items-center mb-1.5">
+                <label for="bmiInput" class="text-xs font-semibold text-slate-700">Indeks Massa Tubuh (BMI)</label>
+                <span id="bmiTag" class="text-[10px] px-2 py-0.5 rounded font-semibold border border-slate-200 text-slate-600">Normal</span>
+              </div>
+              <input type="number" id="bmiInput" min="15.0" max="53.0" step="0.1" value="25.0" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900" oninput="updateBmiTag(this.value); runCalc();">
+              <div class="flex gap-1.5 mt-2">
+                <button type="button" onclick="setBmi(22.0)" class="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">22.0</button>
+                <button type="button" onclick="setBmi(28.5)" class="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">28.5</button>
+                <button type="button" onclick="setBmi(31.5)" class="text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">31.5 (Obes)</button>
+              </div>
+            </div>
+
+            <div>
+              <label for="children" class="block text-xs font-semibold text-slate-700 mb-1.5">Jumlah Tanggungan Anak</label>
+              <select id="children" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition" onchange="runCalc()">
+                <option value="0" selected>0 (Tidak ada)</option>
+                <option value="1">1 Anak</option>
+                <option value="2">2 Anak</option>
+                <option value="3">3 Anak</option>
+                <option value="4">4 Anak</option>
+                <option value="5">5 Anak</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- WILAYAH -->
+          <div>
+            <label for="region" class="block text-xs font-semibold text-slate-700 mb-1.5">Wilayah Domisili (AS)</label>
+            <select id="region" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition" onchange="runCalc()">
+              <option value="northeast" selected>Northeast</option>
+              <option value="northwest">Northwest</option>
+              <option value="southeast">Southeast</option>
+              <option value="southwest">Southwest</option>
+            </select>
+          </div>
+
+        </form>
+      </section>
+
+      <!-- RIGHT: HASIL PREDIKSI & STEP FLOW (5 COLS) -->
+      <section class="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 sm:p-7 shadow-sm space-y-6">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 text-xs">
+          <span class="text-slate-400 uppercase tracking-wider font-bold">2. Hasil Prediksi CART</span>
+          <span id="tierBadge" class="px-2.5 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-[11px] font-semibold">Standard</span>
+        </div>
+
+        <!-- ESTIMATED CHARGES -->
+        <div>
+          <span class="text-xs text-slate-400 block mb-1">Estimasi Biaya Premi Tahunan:</span>
+          <div class="flex items-baseline gap-2">
+            <span class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900" id="resUsd">$0.00</span>
+            <span class="text-xs font-semibold text-slate-500">USD / tahun</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1 font-medium" id="resIdr">Setara Rp 0</p>
+        </div>
+
+        <!-- DYNAMIC STEP-BY-STEP PATH -->
+        <div class="border-t border-slate-100 pt-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Jalur Keputusan yang Ditempuh:</span>
+            <span class="text-[11px] text-emerald-700 font-semibold" id="stepCountBadge">5 Langkah</span>
+          </div>
+          
+          <!-- CONTAINER OF INTERACTIVE STEPS -->
+          <div id="decisionStepsContainer" class="space-y-2.5">
+            <!-- Dynamically populated via JS -->
+            <div class="text-xs text-slate-400 py-3 text-center">Menghitung alur pohon...</div>
+          </div>
+        </div>
+
+        <!-- LOGIC REASON NOTE -->
+        <div class="border-t border-slate-100 pt-3">
+          <span class="text-[11px] text-slate-400 block mb-1 font-semibold uppercase">Analisis Logika Pohon:</span>
+          <p id="resLogic" class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200">
+            Memuat analisis...
+          </p>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- SECTION: POHON KEPUTUSAN INTERAKTIF CART -->
+    <section id="treeSection" class="bg-white border border-slate-200 rounded-xl p-6 sm:p-7 shadow-sm space-y-5">
+      
+      <!-- TREE SECTION HEADER & CONTROLS -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900">Visualisasi Pohon Keputusan Interaktif (Interactive Decision Tree)</h2>
+          </div>
+          <p class="text-xs text-slate-500 max-w-3xl leading-relaxed">
+            Struktur model CART final (kedalaman = 4, 31 simpul). Garis <strong class="text-emerald-600 font-semibold">hijau tebal</strong> menandakan alur keputusan aktif yang dievaluasi dari input Anda di atas hingga ke simpul daun.
+          </p>
+        </div>
+
+        <!-- TABS / TOGGLES -->
+        <div class="flex items-center gap-2 self-start md:self-auto shrink-0">
+          <button type="button" id="tabSvgBtn" onclick="switchView('svg')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-900 text-white transition">
+            Pohon Interaktif (SVG)
+          </button>
+          <button type="button" id="tabImgBtn" onclick="switchView('image')" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition">
+            Gambar Sklearn
+          </button>
+        </div>
+      </div>
+
+      <!-- LEGEND / PATH HELPER -->
+      <div class="flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-200">
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex items-center gap-1.5">
+            <span class="w-4 h-1 bg-emerald-500 rounded-full inline-block"></span>
+            <span class="font-semibold text-slate-800">Garis Hijau: Jalur Aktif Terpilih</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-4 h-1 bg-slate-300 rounded-full inline-block"></span>
+            <span class="text-slate-500">Garis Abu-abu: Cabang Alternatif Lain</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded bg-emerald-50 border border-emerald-500 inline-block"></span>
+            <span class="text-slate-700">Simpul Hijau: Syarat Terpenuhi</span>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-500">
+          Tip: Geser horizontal untuk melihat seluruh 16 simpul daun
+        </div>
+      </div>
+
+      <!-- VIEW 1: INTERACTIVE SVG TREE CONTAINER -->
+      <div id="svgContainerWrapper" class="overflow-x-auto tree-scroll bg-white p-3 sm:p-5 rounded-xl border border-slate-200 relative">
+        <div class="min-w-[1150px]">
+          <svg id="cartTreeSvg" viewBox="0 0 1380 560" class="w-full h-auto select-none font-sans" style="min-width: 1150px;">
+  <defs>
+    <filter id="greenGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#10b981" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  <!-- EDGES -->
+  <g id="treeEdgesGroup">
+    <path id="edge-0-1" class="tree-edge transition-all duration-300" d="M 690.0 73 C 690.0 102.5, 348.7 102.5, 348.7 132" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-0-16" class="tree-edge transition-all duration-300" d="M 690.0 73 C 690.0 102.5, 1031.3 102.5, 1031.3 132" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-1-2" class="tree-edge transition-all duration-300" d="M 348.7 178 C 348.7 207.5, 178.0 207.5, 178.0 237" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-1-9" class="tree-edge transition-all duration-300" d="M 348.7 178 C 348.7 207.5, 519.3 207.5, 519.3 237" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-2-3" class="tree-edge transition-all duration-300" d="M 178.0 283 C 178.0 312.5, 92.7 312.5, 92.7 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-2-6" class="tree-edge transition-all duration-300" d="M 178.0 283 C 178.0 312.5, 263.3 312.5, 263.3 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-3-4" class="tree-edge transition-all duration-300" d="M 92.7 388 C 92.7 422.5, 50.0 422.5, 50.0 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-3-5" class="tree-edge transition-all duration-300" d="M 92.7 388 C 92.7 422.5, 135.3 422.5, 135.3 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-6-7" class="tree-edge transition-all duration-300" d="M 263.3 388 C 263.3 422.5, 220.7 422.5, 220.7 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-6-8" class="tree-edge transition-all duration-300" d="M 263.3 388 C 263.3 422.5, 306.0 422.5, 306.0 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-9-10" class="tree-edge transition-all duration-300" d="M 519.3 283 C 519.3 312.5, 434.0 312.5, 434.0 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-9-13" class="tree-edge transition-all duration-300" d="M 519.3 283 C 519.3 312.5, 604.7 312.5, 604.7 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-10-11" class="tree-edge transition-all duration-300" d="M 434.0 388 C 434.0 422.5, 391.3 422.5, 391.3 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-10-12" class="tree-edge transition-all duration-300" d="M 434.0 388 C 434.0 422.5, 476.7 422.5, 476.7 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-13-14" class="tree-edge transition-all duration-300" d="M 604.7 388 C 604.7 422.5, 562.0 422.5, 562.0 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-13-15" class="tree-edge transition-all duration-300" d="M 604.7 388 C 604.7 422.5, 647.3 422.5, 647.3 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-16-17" class="tree-edge transition-all duration-300" d="M 1031.3 178 C 1031.3 207.5, 860.7 207.5, 860.7 237" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-16-24" class="tree-edge transition-all duration-300" d="M 1031.3 178 C 1031.3 207.5, 1202.0 207.5, 1202.0 237" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-17-18" class="tree-edge transition-all duration-300" d="M 860.7 283 C 860.7 312.5, 775.3 312.5, 775.3 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-17-21" class="tree-edge transition-all duration-300" d="M 860.7 283 C 860.7 312.5, 946.0 312.5, 946.0 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-18-19" class="tree-edge transition-all duration-300" d="M 775.3 388 C 775.3 422.5, 732.7 422.5, 732.7 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-18-20" class="tree-edge transition-all duration-300" d="M 775.3 388 C 775.3 422.5, 818.0 422.5, 818.0 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-21-22" class="tree-edge transition-all duration-300" d="M 946.0 388 C 946.0 422.5, 903.3 422.5, 903.3 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-21-23" class="tree-edge transition-all duration-300" d="M 946.0 388 C 946.0 422.5, 988.7 422.5, 988.7 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-24-25" class="tree-edge transition-all duration-300" d="M 1202.0 283 C 1202.0 312.5, 1116.7 312.5, 1116.7 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-24-28" class="tree-edge transition-all duration-300" d="M 1202.0 283 C 1202.0 312.5, 1287.3 312.5, 1287.3 342" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-25-26" class="tree-edge transition-all duration-300" d="M 1116.7 388 C 1116.7 422.5, 1074.0 422.5, 1074.0 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-25-27" class="tree-edge transition-all duration-300" d="M 1116.7 388 C 1116.7 422.5, 1159.3 422.5, 1159.3 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-28-29" class="tree-edge transition-all duration-300" d="M 1287.3 388 C 1287.3 422.5, 1244.7 422.5, 1244.7 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+<path id="edge-28-30" class="tree-edge transition-all duration-300" d="M 1287.3 388 C 1287.3 422.5, 1330.0 422.5, 1330.0 457" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-linecap="round" />
+  </g>
+  <!-- EDGE LABELS -->
+  <g id="treeEdgeLabelsGroup">
+    <text id="elbl-0-1" x="672.0" y="84" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">Bukan (≤)</text>
+<text id="elbl-0-16" x="708.0" y="84" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">Perokok (>)</text>
+<text id="elbl-1-2" x="306.025" y="189" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-1-9" x="391.34999999999997" y="189" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-2-3" x="156.675" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-2-6" x="199.325" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-3-4" x="82.025" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-3-5" x="103.35000000000001" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-6-7" x="252.65000000000003" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-6-8" x="273.975" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-9-10" x="497.97499999999997" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-9-13" x="540.65" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-10-11" x="423.325" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-10-12" x="444.675" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-13-14" x="594.0250000000001" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-13-15" x="615.35" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-16-17" x="988.6499999999999" y="189" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-16-24" x="1073.975" y="189" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-17-18" x="839.3500000000001" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-17-21" x="882.0250000000001" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-18-19" x="764.6499999999999" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-18-20" x="785.9749999999999" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-21-22" x="935.325" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-21-23" x="956.675" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-24-25" x="1180.675" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-24-28" x="1223.325" y="294" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-25-26" x="1106.025" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-25-27" x="1127.3500000000001" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+<text id="elbl-28-29" x="1276.6499999999999" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">≤</text>
+<text id="elbl-28-30" x="1297.975" y="399" text-anchor="middle" class="edge-lbl text-[9px] font-semibold select-none transition-all duration-300" fill="#94a3b8">></text>
+  </g>
+  <!-- NODES -->
+  <g id="treeNodesGroup">
+    <g id="tree-node-0" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="0" data-leaf="false" data-feat="smoker" data-thresh="0.5" data-samples="1069" transform="translate(643.0, 27.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Smoker</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">Perokok?</text>
+</g>
+<g id="tree-node-1" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="1" data-leaf="false" data-feat="age" data-thresh="42.5" data-samples="855" transform="translate(301.7, 132.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 42 th</text>
+</g>
+<g id="tree-node-2" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="2" data-leaf="false" data-feat="children" data-thresh="0.5" data-samples="484" transform="translate(131.0, 237.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Anak</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 0</text>
+</g>
+<g id="tree-node-3" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="3" data-leaf="false" data-feat="age" data-thresh="22.5" data-samples="204" transform="translate(45.7, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 22 th</text>
+</g>
+<g id="tree-node-4" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="4" data-leaf="true" data-val="2619.85" data-samples="94" transform="translate(12.0, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$2,620</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=94</text>
+</g>
+<g id="tree-node-5" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="5" data-leaf="true" data-val="5092.16" data-samples="110" transform="translate(97.3, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$5,092</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=110</text>
+</g>
+<g id="tree-node-6" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="6" data-leaf="false" data-feat="children" data-thresh="1.5" data-samples="280" transform="translate(216.3, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Anak</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 2</text>
+</g>
+<g id="tree-node-7" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="7" data-leaf="true" data-val="5809.28" data-samples="126" transform="translate(182.7, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$5,809</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=126</text>
+</g>
+<g id="tree-node-8" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="8" data-leaf="true" data-val="7357.27" data-samples="154" transform="translate(268.0, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$7,357</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=154</text>
+</g>
+<g id="tree-node-9" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="9" data-leaf="false" data-feat="age" data-thresh="51.5" data-samples="371" transform="translate(472.3, 237.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 52 th</text>
+</g>
+<g id="tree-node-10" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="10" data-leaf="false" data-feat="age" data-thresh="46.5" data-samples="151" transform="translate(387.0, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 46 th</text>
+</g>
+<g id="tree-node-11" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="11" data-leaf="true" data-val="9283.14" data-samples="65" transform="translate(353.3, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$9,283</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=65</text>
+</g>
+<g id="tree-node-12" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="12" data-leaf="true" data-val="11016.04" data-samples="86" transform="translate(438.7, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$11,016</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=86</text>
+</g>
+<g id="tree-node-13" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="13" data-leaf="false" data-feat="age" data-thresh="58.5" data-samples="220" transform="translate(557.7, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 58 th</text>
+</g>
+<g id="tree-node-14" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="14" data-leaf="true" data-val="12916.91" data-samples="135" transform="translate(524.0, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$12,917</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=135</text>
+</g>
+<g id="tree-node-15" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="15" data-leaf="true" data-val="15296.95" data-samples="85" transform="translate(609.3, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$15,297</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=85</text>
+</g>
+<g id="tree-node-16" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="16" data-leaf="false" data-feat="bmi" data-thresh="30.010000228881836" data-samples="214" transform="translate(984.3, 132.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">BMI</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 30.0</text>
+</g>
+<g id="tree-node-17" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="17" data-leaf="false" data-feat="age" data-thresh="41.0" data-samples="108" transform="translate(813.7, 237.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 41 th</text>
+</g>
+<g id="tree-node-18" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="18" data-leaf="false" data-feat="bmi" data-thresh="24.264999389648438" data-samples="62" transform="translate(728.3, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">BMI</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 24.3</text>
+</g>
+<g id="tree-node-19" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="19" data-leaf="true" data-val="16284.42" data-samples="22" transform="translate(694.7, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$16,284</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=22</text>
+</g>
+<g id="tree-node-20" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="20" data-leaf="true" data-val="19441.44" data-samples="40" transform="translate(780.0, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$19,441</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=40</text>
+</g>
+<g id="tree-node-21" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="21" data-leaf="false" data-feat="age" data-thresh="56.5" data-samples="46" transform="translate(899.0, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 56 th</text>
+</g>
+<g id="tree-node-22" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="22" data-leaf="true" data-val="24057.46" data-samples="34" transform="translate(865.3, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$24,057</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=34</text>
+</g>
+<g id="tree-node-23" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="23" data-leaf="true" data-val="28215.24" data-samples="12" transform="translate(950.7, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$28,215</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=12</text>
+</g>
+<g id="tree-node-24" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="24" data-leaf="false" data-feat="age" data-thresh="43.5" data-samples="106" transform="translate(1155.0, 237.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 44 th</text>
+</g>
+<g id="tree-node-25" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="25" data-leaf="false" data-feat="age" data-thresh="27.5" data-samples="62" transform="translate(1069.7, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 28 th</text>
+</g>
+<g id="tree-node-26" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="26" data-leaf="true" data-val="36304.85" data-samples="35" transform="translate(1036.0, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$36,305</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=35</text>
+</g>
+<g id="tree-node-27" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="27" data-leaf="true" data-val="40778.86" data-samples="27" transform="translate(1121.3, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$40,779</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=27</text>
+</g>
+<g id="tree-node-28" class="tree-node internal-node cursor-pointer transition-all duration-300" data-id="28" data-leaf="false" data-feat="age" data-thresh="56.5" data-samples="44" transform="translate(1240.3, 342.0)">
+  <rect width="94" height="46" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="47.0" y="18" text-anchor="middle" class="node-title font-semibold text-[11px] transition-all duration-300" fill="#334155">Usia</text>
+  <text x="47.0" y="33" text-anchor="middle" class="node-sub text-[10px] font-medium transition-all duration-300" fill="#64748b">≤ 56 th</text>
+</g>
+<g id="tree-node-29" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="29" data-leaf="true" data-val="44223.75" data-samples="28" transform="translate(1206.7, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$44,224</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=28</text>
+</g>
+<g id="tree-node-30" class="tree-node leaf-node cursor-pointer transition-all duration-300" data-id="30" data-leaf="true" data-val="47542.03" data-samples="16" transform="translate(1292.0, 458.0)">
+  <rect width="76" height="44" rx="8" class="node-rect transition-all duration-300" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2" />
+  <text x="38.0" y="18" text-anchor="middle" class="node-title font-bold text-[11px] transition-all duration-300" fill="#475569">$47,542</text>
+  <text x="38.0" y="33" text-anchor="middle" class="node-sub text-[9px] font-medium transition-all duration-300" fill="#94a3b8">n=16</text>
+</g>
+  </g>
+</svg>
+        </div>
+      </div>
+
+      <!-- VIEW 2: STATIC MATPLOTLIB IMAGE CONTAINER (HIDDEN BY DEFAULT) -->
+      <div id="imageContainerWrapper" class="hidden overflow-x-auto bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between pb-2">
+          <span class="text-xs font-semibold text-slate-700">Diagram Asli Skikit-Learn (Matplotlib Export)</span>
+          <a href="/visualizations/decision_tree_diagram.png" target="_blank" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 underline">
+            Buka Ukuran Penuh (Resolusi Tinggi) &rarr;
+          </a>
+        </div>
+        <img src="/visualizations/decision_tree_diagram.png" alt="Arsitektur Pohon Keputusan CART" class="w-full min-w-[850px] h-auto rounded border border-slate-200 bg-white">
+      </div>
+
+      <!-- EXPLANATION GUIDE CARDS -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 text-xs">
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="w-5 h-5 rounded-full bg-slate-900 text-white font-bold flex items-center justify-center text-[10px]">1</span>
+            <span class="font-bold text-slate-900">Simpul Akar (Root Node)</span>
+          </div>
+          <p class="text-slate-600 leading-relaxed text-[11px]">
+            Model CART membelah variabel <code>smoker</code> terlebih dahulu karena menghasilkan reduksi MSE terbesar (>67% feature importance). Pasien non-perokok diarahkan ke cabang kiri (premi rendah), sedangkan perokok ke cabang kanan.
+          </p>
+        </div>
+
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="w-5 h-5 rounded-full bg-slate-900 text-white font-bold flex items-center justify-center text-[10px]">2</span>
+            <span class="font-bold text-slate-900">Ambang Kritis Obesitas (BMI)</span>
+          </div>
+          <p class="text-slate-600 leading-relaxed text-[11px]">
+            Pada kelompok perokok (cabang kanan), simpul kedua mengevaluasi <code>bmi &le; 30.0</code>. Pasien perokok dengan BMI &ge; 30 mengalami lonjakan premi drastis ke kisaran <strong>$36.000 - $47.000</strong>.
+          </p>
+        </div>
+
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="w-5 h-5 rounded-full bg-slate-900 text-white font-bold flex items-center justify-center text-[10px]">3</span>
+            <span class="font-bold text-slate-900">Gradasi Usia (Age)</span>
+          </div>
+          <p class="text-slate-600 leading-relaxed text-[11px]">
+            Pada kelompok bukan perokok (cabang kiri), variabel <code>age</code> membagi risiko secara bertahap (&le; 22.5 th, &le; 42.5 th, &le; 51.5 th) mencerminkan kenaikan premi alami seiring bertambahnya usia.
+          </p>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    // Tab switching between Interactive SVG and Matplotlib Image
+    function switchView(mode) {
+      const svgWrapper = document.getElementById('svgContainerWrapper');
+      const imgWrapper = document.getElementById('imageContainerWrapper');
+      const tabSvgBtn = document.getElementById('tabSvgBtn');
+      const tabImgBtn = document.getElementById('tabImgBtn');
+
+      if (mode === 'svg') {
+        svgWrapper.classList.remove('hidden');
+        imgWrapper.classList.add('hidden');
+        tabSvgBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-900 text-white transition";
+        tabImgBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition";
+      } else {
+        svgWrapper.classList.add('hidden');
+        imgWrapper.classList.remove('hidden');
+        tabImgBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-900 text-white transition";
+        tabSvgBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition";
+      }
+    }
+
+    function setAge(val) {
+      document.getElementById('ageInput').value = val;
+      document.getElementById('ageDisplay').textContent = val + ' tahun';
+      runCalc();
+    }
+
+    function setBmi(val) {
+      document.getElementById('bmiInput').value = val;
+      updateBmiTag(val);
+      runCalc();
+    }
+
+    function updateBmiTag(val) {
+      const v = parseFloat(val);
+      const tag = document.getElementById('bmiTag');
+      if (isNaN(v)) return;
+      if (v < 18.5) {
+        tag.textContent = "Kurus (<18.5)";
+        tag.className = "text-[10px] px-2 py-0.5 rounded font-semibold border border-amber-200 bg-amber-50 text-amber-700";
+      } else if (v < 25.0) {
+        tag.textContent = "Normal (18.5 - 24.9)";
+        tag.className = "text-[10px] px-2 py-0.5 rounded font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700";
+      } else if (v < 30.0) {
+        tag.textContent = "Kelebihan (25.0 - 29.9)";
+        tag.className = "text-[10px] px-2 py-0.5 rounded font-semibold border border-indigo-200 bg-indigo-50 text-indigo-700";
+      } else {
+        tag.textContent = "Obesitas (≥30.0)";
+        tag.className = "text-[10px] px-2 py-0.5 rounded font-semibold border border-rose-200 bg-rose-50 text-rose-700";
+      }
+    }
+
+    // Updates SVG nodes & edges with real-time green highlight
+    function updateSvgHighlight(activeNodes) {
+      if (!activeNodes || activeNodes.length === 0) return;
+
+      const activeSet = new Set(activeNodes);
+      const leafId = activeNodes[activeNodes.length - 1];
+
+      // 1. Reset all edges
+      document.querySelectorAll('.tree-edge').forEach(edge => {
+        edge.setAttribute('stroke', '#e2e8f0');
+        edge.setAttribute('stroke-width', '1.5');
+        edge.setAttribute('opacity', '0.25');
+        edge.removeAttribute('filter');
+      });
+
+      // Reset edge labels
+      document.querySelectorAll('.edge-lbl').forEach(lbl => {
+        lbl.setAttribute('fill', '#cbd5e1');
+        lbl.setAttribute('opacity', '0.4');
+      });
+
+      // 2. Reset all nodes
+      document.querySelectorAll('.tree-node').forEach(node => {
+        const rect = node.querySelector('.node-rect');
+        const title = node.querySelector('.node-title');
+        const sub = node.querySelector('.node-sub');
+
+        rect.setAttribute('fill', '#ffffff');
+        rect.setAttribute('stroke', '#e2e8f0');
+        rect.setAttribute('stroke-width', '1.2');
+        rect.removeAttribute('filter');
+        node.setAttribute('opacity', '0.25');
+
+        title.setAttribute('fill', '#94a3b8');
+        sub.setAttribute('fill', '#cbd5e1');
+      });
+
+      // 3. Highlight active edges and edge labels
+      for (let i = 0; i < activeNodes.length - 1; i++) {
+        const u = activeNodes[i];
+        const v = activeNodes[i + 1];
+        const edgeId = `edge-${u}-${v}`;
+        const lblId = `elbl-${u}-${v}`;
+
+        const edgeEl = document.getElementById(edgeId);
+        if (edgeEl) {
+          edgeEl.setAttribute('stroke', '#10b981'); // Emerald 500
+          edgeEl.setAttribute('stroke-width', '3.5');
+          edgeEl.setAttribute('opacity', '1');
+          edgeEl.setAttribute('filter', 'url(#greenGlow)');
+        }
+
+        const lblEl = document.getElementById(lblId);
+        if (lblEl) {
+          lblEl.setAttribute('fill', '#059669'); // Emerald 600
+          lblEl.setAttribute('opacity', '1');
+        }
+      }
+
+      // 4. Highlight active nodes
+      activeNodes.forEach(nid => {
+        const nodeEl = document.getElementById(`tree-node-${nid}`);
+        if (!nodeEl) return;
+
+        const rect = nodeEl.querySelector('.node-rect');
+        const title = nodeEl.querySelector('.node-title');
+        const sub = nodeEl.querySelector('.node-sub');
+
+        nodeEl.setAttribute('opacity', '1');
+
+        if (nid === leafId) {
+          // Active Leaf Node
+          rect.setAttribute('fill', '#10b981'); // solid emerald
+          rect.setAttribute('stroke', '#047857');
+          rect.setAttribute('stroke-width', '2.5');
+          rect.setAttribute('filter', 'url(#greenGlow)');
+
+          title.setAttribute('fill', '#ffffff');
+          sub.setAttribute('fill', '#d1fae5');
+        } else {
+          // Active Internal Node
+          rect.setAttribute('fill', '#ecfdf5'); // light emerald tint
+          rect.setAttribute('stroke', '#10b981');
+          rect.setAttribute('stroke-width', '2.5');
+          rect.setAttribute('filter', 'url(#greenGlow)');
+
+          title.setAttribute('fill', '#064e3b');
+          sub.setAttribute('fill', '#047857');
+        }
+      });
+    }
+
+    // Render interactive step-by-step decision pathway cards
+    function renderDecisionSteps(steps) {
+      const container = document.getElementById('decisionStepsContainer');
+      if (!steps || steps.length === 0) return;
+
+      document.getElementById('stepCountBadge').textContent = `${steps.length} Langkah Terhubung`;
+
+      let html = '';
+      steps.forEach((step, idx) => {
+        const isLeaf = step.is_leaf;
+        const isLast = (idx === steps.length - 1);
+
+        if (isLeaf) {
+          html += `
+            <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-300 text-xs flex items-center justify-between shadow-sm">
+              <div class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0">✓</span>
+                <div>
+                  <span class="font-bold text-emerald-950 block">${step.title}</span>
+                  <span class="text-[11px] text-emerald-800">Simpul Daun #${step.node_id} &bull; Estimasi Premi</span>
+                </div>
+              </div>
+              <span class="font-extrabold text-sm text-emerald-700 bg-white px-2.5 py-1 rounded border border-emerald-200">${step.user_val}</span>
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="p-2.5 rounded-lg bg-white border border-slate-200 hover:border-emerald-300 transition text-xs space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-slate-800 flex items-center gap-1.5">
+                  <span class="w-4 h-4 rounded-full bg-slate-900 text-white text-[9px] font-bold flex items-center justify-center">${idx + 1}</span>
+                  ${step.title}
+                </span>
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  ${step.branch}
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                <span>Nilai Pasien: <strong class="text-slate-800 font-semibold">${step.user_val}</strong></span>
+                <span class="text-slate-400 font-mono text-[10px]">${step.rule}</span>
+              </div>
+            </div>
+          `;
+        }
+      });
+
+      container.innerHTML = html;
+    }
+
+    let debounceTimer;
+    function runCalc() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        const ageVal = parseFloat(document.getElementById('ageInput').value);
+        const bmiVal = parseFloat(document.getElementById('bmiInput').value);
+
+        if (isNaN(ageVal) || isNaN(bmiVal)) return;
+
+        const payload = {
+          age: ageVal,
+          sex: parseInt(document.querySelector('input[name="sex"]:checked').value),
+          bmi: bmiVal,
+          children: parseInt(document.getElementById('children').value),
+          smoker: parseInt(document.querySelector('input[name="smoker"]:checked').value),
+          region: document.getElementById('region').value
+        };
+
+        try {
+          const resp = await fetch('/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await resp.json();
+
+          if (data.success) {
+            document.getElementById('resUsd').textContent = data.cart_formatted;
+            document.getElementById('resIdr').textContent = `Setara ${data.idr_formatted} / tahun`;
+            document.getElementById('resLogic').textContent = data.logic_reason;
+            
+            // Risk Tier Badge
+            const tierEl = document.getElementById('tierBadge');
+            tierEl.textContent = data.risk_tier;
+            if (data.risk_color === 'rose') {
+              tierEl.className = "px-2.5 py-0.5 rounded-full border border-rose-200 bg-rose-50 text-rose-700 text-[11px] font-semibold";
+            } else if (data.risk_color === 'amber') {
+              tierEl.className = "px-2.5 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-amber-800 text-[11px] font-semibold";
+            } else if (data.risk_color === 'indigo') {
+              tierEl.className = "px-2.5 py-0.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-semibold";
+            } else {
+              tierEl.className = "px-2.5 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-[11px] font-semibold";
+            }
+
+            // Render interactive step list
+            renderDecisionSteps(data.decision_steps);
+
+            // Highlight interactive SVG Tree
+            updateSvgHighlight(data.active_nodes);
+          }
+        } catch (e) {
+          console.error("Gagal melakukan kalkulasi:", e);
+        }
+      }, 100);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      updateBmiTag(document.getElementById('bmiInput').value);
+      runCalc();
+    });
+  </script>
+</body>
+</html>
